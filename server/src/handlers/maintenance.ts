@@ -1,82 +1,186 @@
+import { db } from '../db';
+import { maintenanceSchedulesTable, assetsTable, usersTable } from '../db/schema';
 import { type CreateMaintenanceScheduleInput, type UpdateMaintenanceScheduleInput, type MaintenanceSchedule, type CalendarEvent } from '../schema';
+import { eq, gte, lte, and, SQL } from 'drizzle-orm';
 
 export async function createMaintenanceSchedule(input: CreateMaintenanceScheduleInput): Promise<MaintenanceSchedule> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to create a new maintenance schedule for an asset.
-  // Should validate asset exists and scheduled_by user exists.
-  return Promise.resolve({
-    id: 1,
-    asset_id: input.asset_id,
-    scheduled_by: input.scheduled_by,
-    title: input.title,
-    description: input.description || null,
-    scheduled_date: input.scheduled_date,
-    is_completed: false,
-    completed_at: null,
-    created_at: new Date(),
-    updated_at: new Date(),
-  } as MaintenanceSchedule);
+  try {
+    // Validate that asset exists
+    const asset = await db.select()
+      .from(assetsTable)
+      .where(eq(assetsTable.id, input.asset_id))
+      .execute();
+    
+    if (asset.length === 0) {
+      throw new Error('Asset not found');
+    }
+
+    // Validate that scheduled_by user exists
+    const user = await db.select()
+      .from(usersTable)
+      .where(eq(usersTable.id, input.scheduled_by))
+      .execute();
+    
+    if (user.length === 0) {
+      throw new Error('User not found');
+    }
+
+    // Create the maintenance schedule
+    const result = await db.insert(maintenanceSchedulesTable)
+      .values({
+        asset_id: input.asset_id,
+        scheduled_by: input.scheduled_by,
+        title: input.title,
+        description: input.description || null,
+        scheduled_date: input.scheduled_date,
+      })
+      .returning()
+      .execute();
+
+    return result[0];
+  } catch (error) {
+    console.error('Maintenance schedule creation failed:', error);
+    throw error;
+  }
 }
 
 export async function getMaintenanceSchedules(): Promise<MaintenanceSchedule[]> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch all maintenance schedules.
-  // Should include asset and scheduled_by user information.
-  return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(maintenanceSchedulesTable)
+      .execute();
+
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch maintenance schedules:', error);
+    throw error;
+  }
 }
 
 export async function getMaintenanceSchedulesByAssetId(assetId: number): Promise<MaintenanceSchedule[]> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch maintenance history for a specific asset.
-  return Promise.resolve([]);
+  try {
+    const result = await db.select()
+      .from(maintenanceSchedulesTable)
+      .where(eq(maintenanceSchedulesTable.asset_id, assetId))
+      .execute();
+
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch maintenance schedules by asset ID:', error);
+    throw error;
+  }
 }
 
 export async function getUpcomingMaintenance(): Promise<MaintenanceSchedule[]> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch upcoming maintenance schedules.
-  // Should return schedules for next 30 days that are not completed.
-  return Promise.resolve([]);
+  try {
+    const now = new Date();
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(now.getDate() + 30);
+
+    const result = await db.select()
+      .from(maintenanceSchedulesTable)
+      .where(
+        and(
+          gte(maintenanceSchedulesTable.scheduled_date, now),
+          lte(maintenanceSchedulesTable.scheduled_date, thirtyDaysFromNow),
+          eq(maintenanceSchedulesTable.is_completed, false)
+        )
+      )
+      .execute();
+
+    return result;
+  } catch (error) {
+    console.error('Failed to fetch upcoming maintenance:', error);
+    throw error;
+  }
 }
 
 export async function updateMaintenanceSchedule(input: UpdateMaintenanceScheduleInput): Promise<MaintenanceSchedule> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to update maintenance schedule details.
-  // Should set completed_at when is_completed changes to true.
-  return Promise.resolve({
-    id: input.id,
-    asset_id: 1,
-    scheduled_by: 1,
-    title: input.title || 'Maintenance Title',
-    description: input.description || null,
-    scheduled_date: input.scheduled_date || new Date(),
-    is_completed: input.is_completed || false,
-    completed_at: input.completed_at || null,
-    created_at: new Date(),
-    updated_at: new Date(),
-  } as MaintenanceSchedule);
+  try {
+    // Build update object dynamically
+    const updateData: any = {};
+    
+    if (input.title !== undefined) updateData.title = input.title;
+    if (input.description !== undefined) updateData.description = input.description;
+    if (input.scheduled_date !== undefined) updateData.scheduled_date = input.scheduled_date;
+    if (input.is_completed !== undefined) {
+      updateData.is_completed = input.is_completed;
+      // Set completed_at when marking as completed
+      if (input.is_completed && !input.completed_at) {
+        updateData.completed_at = new Date();
+      }
+    }
+    if (input.completed_at !== undefined) updateData.completed_at = input.completed_at;
+
+    // Always update the updated_at timestamp
+    updateData.updated_at = new Date();
+
+    const result = await db.update(maintenanceSchedulesTable)
+      .set(updateData)
+      .where(eq(maintenanceSchedulesTable.id, input.id))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error('Maintenance schedule not found');
+    }
+
+    return result[0];
+  } catch (error) {
+    console.error('Failed to update maintenance schedule:', error);
+    throw error;
+  }
 }
 
 export async function getCalendarEvents(): Promise<CalendarEvent[]> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch maintenance events for calendar display.
-  // Should format maintenance schedules for calendar component.
-  return Promise.resolve([]);
+  try {
+    const result = await db.select({
+      id: maintenanceSchedulesTable.id,
+      title: maintenanceSchedulesTable.title,
+      description: maintenanceSchedulesTable.description,
+      date: maintenanceSchedulesTable.scheduled_date,
+      asset_name: assetsTable.name,
+    })
+      .from(maintenanceSchedulesTable)
+      .innerJoin(assetsTable, eq(maintenanceSchedulesTable.asset_id, assetsTable.id))
+      .where(eq(maintenanceSchedulesTable.is_completed, false))
+      .execute();
+
+    return result.map(item => ({
+      id: item.id,
+      title: item.title,
+      description: item.description,
+      date: item.date,
+      type: 'maintenance' as const,
+      asset_name: item.asset_name,
+    }));
+  } catch (error) {
+    console.error('Failed to fetch calendar events:', error);
+    throw error;
+  }
 }
 
 export async function markMaintenanceCompleted(id: number): Promise<MaintenanceSchedule> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to mark a maintenance schedule as completed.
-  // Should set is_completed to true and completed_at to current timestamp.
-  return Promise.resolve({
-    id: id,
-    asset_id: 1,
-    scheduled_by: 1,
-    title: 'Completed Maintenance',
-    description: null,
-    scheduled_date: new Date(),
-    is_completed: true,
-    completed_at: new Date(),
-    created_at: new Date(),
-    updated_at: new Date(),
-  } as MaintenanceSchedule);
+  try {
+    const now = new Date();
+    
+    const result = await db.update(maintenanceSchedulesTable)
+      .set({
+        is_completed: true,
+        completed_at: now,
+        updated_at: now,
+      })
+      .where(eq(maintenanceSchedulesTable.id, id))
+      .returning()
+      .execute();
+
+    if (result.length === 0) {
+      throw new Error('Maintenance schedule not found');
+    }
+
+    return result[0];
+  } catch (error) {
+    console.error('Failed to mark maintenance as completed:', error);
+    throw error;
+  }
 }

@@ -1,32 +1,76 @@
+import { db } from '../db';
+import { usersTable } from '../db/schema';
 import { type LoginInput, type User } from '../schema';
+import { eq, and } from 'drizzle-orm';
 
-export async function login(input: LoginInput): Promise<User> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to authenticate users with email and password.
-  // Should verify credentials against the database and return user data if valid.
-  return Promise.resolve({
-    id: 1,
-    email: input.email,
-    password: '', // Never return actual password
-    name: 'Admin User',
-    role: 'admin',
-    is_active: true,
-    created_at: new Date(),
-    updated_at: new Date(),
-  } as User);
-}
+export const login = async (input: LoginInput): Promise<User> => {
+  try {
+    // Find user by email and password
+    const results = await db.select()
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.email, input.email),
+          eq(usersTable.password, input.password), // In real app, this would be hashed
+          eq(usersTable.is_active, true)
+        )
+      )
+      .execute();
 
-export async function getCurrentUser(userId: number): Promise<User | null> {
-  // This is a placeholder declaration! Real code should be implemented here.
-  // The goal of this handler is to fetch current user data by ID.
-  return Promise.resolve({
-    id: userId,
-    email: 'admin@gmail.com',
-    password: '', // Never return actual password
-    name: 'Admin User',
-    role: 'admin',
-    is_active: true,
-    created_at: new Date(),
-    updated_at: new Date(),
-  } as User);
-}
+    if (results.length === 0) {
+      throw new Error('Invalid email or password');
+    }
+
+    const user = results[0];
+
+    // Return user without password for security
+    return {
+      id: user.id,
+      email: user.email,
+      password: '', // Never return actual password
+      name: user.name,
+      role: user.role,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    };
+  } catch (error) {
+    console.error('Login failed:', error);
+    throw error;
+  }
+};
+
+export const getCurrentUser = async (userId: number): Promise<User | null> => {
+  try {
+    const results = await db.select()
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.id, userId),
+          eq(usersTable.is_active, true)
+        )
+      )
+      .execute();
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    const user = results[0];
+
+    // Return user without password for security
+    return {
+      id: user.id,
+      email: user.email,
+      password: '', // Never return actual password
+      name: user.name,
+      role: user.role,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+    };
+  } catch (error) {
+    console.error('Get current user failed:', error);
+    throw error;
+  }
+};
